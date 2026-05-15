@@ -1,47 +1,193 @@
-Boa notícia sócio! 🎉 O bot está a correr no Railway!
-
-O problema é que o **QR Code não aparece no terminal** porque a versão nova do Baileys removeu essa funcionalidade.
-
-Precisamos actualizar o código para mostrar o QR Code de outra forma! Vou corrigir já! Encontrei o problema sócio! 🎯
-
-O QR Code não aparece porque o Baileys novo não suporta mais `printQRInTerminal`. Vou corrigir o código para mostrar o QR Code nos logs!  Pronto sócio! Código corrigido! 🎯
-
-Agora faz o seguinte: Agora faz assim sócio! 👇
-
----
-
-**Passo 1 — Actualiza o ficheiro no GitHub**
-- Vai ao teu repositório `btjrbn-bot` no GitHub
-- Clica no ficheiro `index.js`
-- Clica no ícone de **lápis** (editar)
-- Apaga tudo e cola o conteúdo do novo `index.js` que descarregaste
-- Clica **"Commit changes"**
-
----
-
-**Passo 2 — Railway faz deploy automático**
-- O Railway detecta a mudança no GitHub automaticamente
-- Aguarda 1-2 minutos o deploy terminar
-
----
-
-**Passo 3 — Ver o QR Code nos logs**
-- Vai em **"Logs"** no Railway
-- Agora vai aparecer o QR Code assim:
-
-```
-📱 SCAN O QR CODE ABAIXO COM O WHATSAPP:
-█████████████████
-█ ▄▄▄▄▄ █▀ █▀ █
-█ █   █ █▀▀▀▄ █
-...
-👆 Abre o WhatsApp → Dispositivos Ligados → Lê o QR Code
-```
-
----
-
-**Passo 4 — Liga o WhatsApp**
-- Abre WhatsApp → **Configurações** → **Dispositivos Ligados** → **Ligar Dispositivo**
-- Lê o QR Code nos logs
-
-Diz-me quando aparecer o QR Code! 🚀
+const { default: makeWASocket, DisconnectReason, useMultiFileAuthState } = require('@whiskeysockets/baileys');
+const { Boom } = require('@hapi/boom');
+const fetch = require('node-fetch');
+const fs = require('fs');
+const qrcode = require('qrcode-terminal');
+ 
+// ============================================================
+//  BT JRBN - Bot de Vendas de Megas Vodacom
+// ============================================================
+ 
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_KEY;
+ 
+const TABELA_MEGAS = `
+╔══════════════════════════════════════════╗
+║         📶 TABELA DE PACOTES BT JRBN     ║
+║              Vodacom Moçambique           ║
+╠══════════════════════════════════════════╣
+║  📱 PACOTES DIÁRIOS                      ║
+║  📦 400 MB    →   10,00 MT               ║
+║  📦 800 MB    →   20,00 MT               ║
+║  📦 1.024 MB  →   26,00 MT               ║
+║  📦 1.126 MB  →   28,00 MT               ║
+║  📦 2.252 MB  →   56,00 MT               ║
+║  📦 3.072 MB  →   78,00 MT               ║
+║  📦 4.048 MB  →  100,00 MT               ║
+╠══════════════════════════════════════════╣
+║  📅 PACOTES SEMANAIS                     ║
+║  📦 3.500 MB  →   96,00 MT               ║
+║  📦 5.325 MB  →  140,00 MT               ║
+║  📦 7.270 MB  →  185,00 MT               ║
+║  📦 9.010 MB  →  240,00 MT               ║
+╠══════════════════════════════════════════╣
+║  🗓️ PACOTES MENSAIS                      ║
+║  📦 10.240 MB →  279,00 MT               ║
+║  📦 13.572 MB →  370,00 MT               ║
+║  📦 18.299 MB →  460,00 MT               ║
+║  📦 25.459 MB →  650,00 MT               ║
+║  📦 36.631 MB →  895,00 MT               ║
+║  📦 54.886 MB → 1.450,00 MT              ║
+╠══════════════════════════════════════════╣
+║  🌍 MENSAIS + SMS Ilimitadas             ║
+║     + 10min Internacional + 30MB Roam    ║
+║  📦 10.240 MB →  445,00 MT               ║
+║  📦 13.572 MB →  550,00 MT               ║
+║  📦 18.572 MB →  550,00 MT               ║
+║  📦 25.459 MB →  800,00 MT               ║
+║  📦 36.631 MB → 1.165,00 MT              ║
+║  📦 54.886 MB → 1.450,00 MT              ║
+╠══════════════════════════════════════════╣
+║  ⚠️ NOTA: Pacotes Mensais e Semanais     ║
+║  não podem ter Txuna Crédito activo.     ║
+╠══════════════════════════════════════════╣
+║  💳 PAGAMENTO:                           ║
+║  M-Pesa:  849192098 — Neivaldo Abrão     ║
+║  E-Mola:  870099779 — Monteiro Abrão     ║
+╚══════════════════════════════════════════╝
+`;
+ 
+const SYSTEM_PROMPT = `Você é o assistente virtual da BT JRBN, uma empresa de revenda de pacotes de dados (megabytes) da Vodacom em Moçambique.
+ 
+O seu nome é BT JRBN e deve se comunicar de forma FORMAL e profissional, sempre em Português.
+ 
+TABELA DE PREÇOS:
+${TABELA_MEGAS}
+ 
+FORMAS DE PAGAMENTO:
+- M-Pesa: transferir para o número 849192098 (nome: Neivaldo Abrão)
+- E-Mola: transferir para o número 870099779 (nome: Monteiro Abrão)
+- Após o pagamento, o cliente deve enviar o comprovativo por aqui
+ 
+NOTA IMPORTANTE SOBRE PACOTES:
+- Pacotes Mensais e Semanais NÃO podem ser activados se o cliente tiver Txuna Crédito activo
+- Informar o cliente sobre esta condição antes de confirmar a compra
+ 
+PROCESSO DE COMPRA:
+1. Cliente escolhe o pacote
+2. Cliente faz o pagamento via M-Pesa ou e-Mola
+3. Cliente envia comprovativo
+4. BT JRBN activa o pacote em até 5 minutos
+ 
+REGRAS IMPORTANTES:
+- Seja sempre formal e educado
+- Se o cliente perguntar sobre a tabela de preços, envie a tabela completa
+- Se o cliente quiser comprar, peça o número Vodacom para activar
+- Se o cliente enviar comprovativo, diga que irá verificar e activar em breve
+- Nunca prometa prazos que não pode cumprir
+- Se não souber responder, diga que irá encaminhar ao responsável
+ 
+Responda de forma concisa e profissional. Máximo 3-4 frases por resposta.`;
+ 
+// Histórico de conversas por utilizador
+const conversas = {};
+ 
+async function perguntarIA(numeroTelefone, mensagemCliente) {
+  if (!conversas[numeroTelefone]) {
+    conversas[numeroTelefone] = [];
+  }
+ 
+  conversas[numeroTelefone].push({
+    role: 'user',
+    content: mensagemCliente
+  });
+ 
+  // Manter apenas as últimas 10 mensagens para não gastar tokens
+  if (conversas[numeroTelefone].length > 10) {
+    conversas[numeroTelefone] = conversas[numeroTelefone].slice(-10);
+  }
+ 
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: SYSTEM_PROMPT,
+        messages: conversas[numeroTelefone]
+      })
+    });
+ 
+    const data = await response.json();
+    const respostaBot = data.content[0].text;
+ 
+    conversas[numeroTelefone].push({
+      role: 'assistant',
+      content: respostaBot
+    });
+ 
+    return respostaBot;
+  } catch (erro) {
+    console.error('Erro na API:', erro);
+    return 'Pedimos desculpa, ocorreu um erro técnico. Por favor, tente novamente em alguns instantes.';
+  }
+}
+ 
+async function iniciarBot() {
+  const { state, saveCreds } = await useMultiFileAuthState('auth_info');
+ 
+  const sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: false,
+  });
+ 
+  sock.ev.on('creds.update', saveCreds);
+ 
+  sock.ev.on('connection.update', (update) => {
+    const { connection, lastDisconnect, qr } = update;
+ 
+    // Mostrar QR Code nos logs quando aparecer
+    if (qr) {
+      console.log('📱 SCAN O QR CODE ABAIXO COM O WHATSAPP:');
+      qrcode.generate(qr, { small: true });
+      console.log('👆 Abre o WhatsApp → Dispositivos Ligados → Ligar Dispositivo → Lê o QR Code');
+    }
+ 
+    if (connection === 'close') {
+      const deveReconectar = new Boom(lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+      console.log('Conexão encerrada. Reconectar?', deveReconectar);
+      if (deveReconectar) {
+        iniciarBot();
+      }
+    } else if (connection === 'open') {
+      console.log('✅ BT JRBN Bot conectado com sucesso!');
+    }
+  });
+ 
+  sock.ev.on('messages.upsert', async ({ messages }) => {
+    const msg = messages[0];
+ 
+    // Ignorar mensagens do próprio bot ou de grupos
+    if (!msg.key.fromMe && !msg.key.remoteJid.includes('@g.us')) {
+      const numeroRemetente = msg.key.remoteJid;
+      const textoMensagem = msg.message?.conversation ||
+                            msg.message?.extendedTextMessage?.text ||
+                            '';
+ 
+      if (textoMensagem) {
+        console.log(`📩 Mensagem de ${numeroRemetente}: ${textoMensagem}`);
+ 
+        const resposta = await perguntarIA(numeroRemetente, textoMensagem);
+ 
+        await sock.sendMessage(numeroRemetente, { text: resposta });
+        console.log(`📤 Resposta enviada: ${resposta}`);
+      }
+    }
+  });
+}
+ 
+iniciarBot();
