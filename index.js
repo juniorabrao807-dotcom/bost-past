@@ -7,6 +7,7 @@ const fetch = require('node-fetch');
 // ============================================================
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_KEY;
+const CHROMIUM_PATH = process.env.CHROMIUM_PATH || '/nix/store/chromium/bin/chromium';
 
 const TABELA_MEGAS = `
 ╔══════════════════════════════════════════╗
@@ -89,9 +90,7 @@ Responda de forma concisa e profissional. Máximo 3-4 frases por resposta.`;
 const conversas = {};
 
 async function perguntarIA(numeroTelefone, mensagemCliente) {
-  if (!conversas[numeroTelefone]) {
-    conversas[numeroTelefone] = [];
-  }
+  if (!conversas[numeroTelefone]) conversas[numeroTelefone] = [];
 
   conversas[numeroTelefone].push({ role: 'user', content: mensagemCliente });
 
@@ -125,9 +124,21 @@ async function perguntarIA(numeroTelefone, mensagemCliente) {
   }
 }
 
+// Encontrar o caminho do Chromium automaticamente
+const { execSync } = require('child_process');
+let chromiumPath = '';
+try {
+  chromiumPath = execSync('which chromium || which chromium-browser || which google-chrome').toString().trim();
+  console.log('✅ Chromium encontrado em:', chromiumPath);
+} catch (e) {
+  console.log('⚠️ Chromium não encontrado no PATH, usando caminho padrão...');
+  chromiumPath = '/nix/store/chromium/bin/chromium';
+}
+
 const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
+    executablePath: chromiumPath,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -155,21 +166,17 @@ client.on('ready', () => {
 
 client.on('disconnected', (reason) => {
   console.log('❌ Bot desconectado:', reason);
-  client.initialize();
+  setTimeout(() => client.initialize(), 5000);
 });
 
 client.on('message', async (msg) => {
   if (msg.fromMe) return;
   if (msg.from.includes('@g.us')) return;
+  if (!msg.body) return;
 
-  const textoMensagem = msg.body;
-  if (!textoMensagem) return;
-
-  console.log(`📩 Mensagem de ${msg.from}: ${textoMensagem}`);
-
-  const resposta = await perguntarIA(msg.from, textoMensagem);
+  console.log(`📩 Mensagem de ${msg.from}: ${msg.body}`);
+  const resposta = await perguntarIA(msg.from, msg.body);
   await msg.reply(resposta);
-
   console.log(`📤 Resposta enviada: ${resposta}`);
 });
 
