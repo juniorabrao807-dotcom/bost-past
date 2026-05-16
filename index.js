@@ -1,7 +1,6 @@
 const { default: makeWASocket, DisconnectReason, useMultiFileAuthState } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const fetch = require('node-fetch');
-const fs = require('fs');
 const qrcode = require('qrcode-terminal');
 
 // ============================================================
@@ -88,7 +87,6 @@ REGRAS IMPORTANTES:
 
 Responda de forma concisa e profissional. Máximo 3-4 frases por resposta.`;
 
-// Histórico de conversas por utilizador
 const conversas = {};
 
 async function perguntarIA(numeroTelefone, mensagemCliente) {
@@ -96,12 +94,8 @@ async function perguntarIA(numeroTelefone, mensagemCliente) {
     conversas[numeroTelefone] = [];
   }
 
-  conversas[numeroTelefone].push({
-    role: 'user',
-    content: mensagemCliente
-  });
+  conversas[numeroTelefone].push({ role: 'user', content: mensagemCliente });
 
-  // Manter apenas as últimas 10 mensagens para não gastar tokens
   if (conversas[numeroTelefone].length > 10) {
     conversas[numeroTelefone] = conversas[numeroTelefone].slice(-10);
   }
@@ -124,12 +118,7 @@ async function perguntarIA(numeroTelefone, mensagemCliente) {
 
     const data = await response.json();
     const respostaBot = data.content[0].text;
-
-    conversas[numeroTelefone].push({
-      role: 'assistant',
-      content: respostaBot
-    });
-
+    conversas[numeroTelefone].push({ role: 'assistant', content: respostaBot });
     return respostaBot;
   } catch (erro) {
     console.error('Erro na API:', erro);
@@ -143,6 +132,9 @@ async function iniciarBot() {
   const sock = makeWASocket({
     auth: state,
     printQRInTerminal: false,
+    browser: ['BT JRBN', 'Chrome', '1.0.0'],
+    connectTimeoutMs: 60000,
+    keepAliveIntervalMs: 10000,
   });
 
   sock.ev.on('creds.update', saveCreds);
@@ -150,18 +142,22 @@ async function iniciarBot() {
   sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect, qr } = update;
 
-    // Mostrar QR Code nos logs quando aparecer
     if (qr) {
-      console.log('📱 SCAN O QR CODE ABAIXO COM O WHATSAPP:');
+      console.log('\n========================================');
+      console.log('📱 SCAN O QR CODE ABAIXO COM O WHATSAPP');
+      console.log('========================================\n');
       qrcode.generate(qr, { small: true });
-      console.log('👆 Abre o WhatsApp → Dispositivos Ligados → Ligar Dispositivo → Lê o QR Code');
+      console.log('\n👆 WhatsApp → Configurações → Dispositivos Ligados → Ligar Dispositivo\n');
     }
 
     if (connection === 'close') {
-      const deveReconectar = new Boom(lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-      console.log('Conexão encerrada. Reconectar?', deveReconectar);
+      const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
+      const deveReconectar = statusCode !== DisconnectReason.loggedOut;
+      console.log('Conexão encerrada. Código:', statusCode, '| Reconectar?', deveReconectar);
       if (deveReconectar) {
-        iniciarBot();
+        setTimeout(() => iniciarBot(), 5000);
+      } else {
+        console.log('❌ Sessão encerrada. Apaga a pasta auth_info e reinicia o serviço.');
       }
     } else if (connection === 'open') {
       console.log('✅ BT JRBN Bot conectado com sucesso!');
@@ -171,18 +167,14 @@ async function iniciarBot() {
   sock.ev.on('messages.upsert', async ({ messages }) => {
     const msg = messages[0];
 
-    // Ignorar mensagens do próprio bot ou de grupos
     if (!msg.key.fromMe && !msg.key.remoteJid.includes('@g.us')) {
       const numeroRemetente = msg.key.remoteJid;
       const textoMensagem = msg.message?.conversation ||
-                            msg.message?.extendedTextMessage?.text ||
-                            '';
+                            msg.message?.extendedTextMessage?.text || '';
 
       if (textoMensagem) {
         console.log(`📩 Mensagem de ${numeroRemetente}: ${textoMensagem}`);
-
         const resposta = await perguntarIA(numeroRemetente, textoMensagem);
-
         await sock.sendMessage(numeroRemetente, { text: resposta });
         console.log(`📤 Resposta enviada: ${resposta}`);
       }
