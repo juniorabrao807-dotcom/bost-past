@@ -121,7 +121,6 @@ async function perguntarIA(numeroTelefone, mensagemCliente) {
 }
 
 console.log('🚀 A iniciar BT JRBN Bot...');
-console.log('🌐 Caminho do Chromium:', CHROMIUM_PATH);
 
 const client = new Client({
   authStrategy: new LocalAuth(),
@@ -140,12 +139,22 @@ const client = new Client({
   }
 });
 
-client.on('qr', (qr) => {
+client.on('qr', async (qr) => {
+  // Gerar link com imagem do QR Code - fácil de abrir no telemóvel!
+  const linkQR = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
+  
   console.log('\n========================================');
-  console.log('📱 SCAN O QR CODE ABAIXO COM O WHATSAPP');
+  console.log('📱 QR CODE PRONTO PARA SCAN!');
+  console.log('========================================');
+  console.log('👇 Abre este link no teu telemóvel ou computador:');
+  console.log('');
+  console.log(linkQR);
+  console.log('');
+  console.log('Depois: WhatsApp → Configurações → Dispositivos Ligados → Ligar Dispositivo');
   console.log('========================================\n');
+  
+  // Também mostrar o QR no terminal como backup
   qrcode.generate(qr, { small: true });
-  console.log('\n👆 WhatsApp → Configurações → Dispositivos Ligados → Ligar Dispositivo\n');
 });
 
 client.on('ready', () => {
