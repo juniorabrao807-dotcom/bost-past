@@ -1,7 +1,6 @@
-const { default: makeWASocket, DisconnectReason, useMultiFileAuthState } = require('@whiskeysockets/baileys');
-const { Boom } = require('@hapi/boom');
-const fetch = require('node-fetch');
+const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
+const fetch = require('node-fetch');
 
 // ============================================================
 //  BT JRBN - Bot de Vendas de Megas Vodacom
@@ -126,60 +125,52 @@ async function perguntarIA(numeroTelefone, mensagemCliente) {
   }
 }
 
-async function iniciarBot() {
-  const { state, saveCreds } = await useMultiFileAuthState('auth_info');
+const client = new Client({
+  authStrategy: new LocalAuth(),
+  puppeteer: {
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--single-process',
+      '--disable-gpu'
+    ],
+  }
+});
 
-  const sock = makeWASocket({
-    auth: state,
-    printQRInTerminal: false,
-    browser: ['BT JRBN', 'Chrome', '1.0.0'],
-    connectTimeoutMs: 60000,
-    keepAliveIntervalMs: 10000,
-  });
+client.on('qr', (qr) => {
+  console.log('\n========================================');
+  console.log('📱 SCAN O QR CODE ABAIXO COM O WHATSAPP');
+  console.log('========================================\n');
+  qrcode.generate(qr, { small: true });
+  console.log('\n👆 WhatsApp → Configurações → Dispositivos Ligados → Ligar Dispositivo\n');
+});
 
-  sock.ev.on('creds.update', saveCreds);
+client.on('ready', () => {
+  console.log('✅ BT JRBN Bot conectado com sucesso!');
+});
 
-  sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect, qr } = update;
+client.on('disconnected', (reason) => {
+  console.log('❌ Bot desconectado:', reason);
+  client.initialize();
+});
 
-    if (qr) {
-      console.log('\n========================================');
-      console.log('📱 SCAN O QR CODE ABAIXO COM O WHATSAPP');
-      console.log('========================================\n');
-      qrcode.generate(qr, { small: true });
-      console.log('\n👆 WhatsApp → Configurações → Dispositivos Ligados → Ligar Dispositivo\n');
-    }
+client.on('message', async (msg) => {
+  if (msg.fromMe) return;
+  if (msg.from.includes('@g.us')) return;
 
-    if (connection === 'close') {
-      const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
-      const deveReconectar = statusCode !== DisconnectReason.loggedOut;
-      console.log('Conexão encerrada. Código:', statusCode, '| Reconectar?', deveReconectar);
-      if (deveReconectar) {
-        setTimeout(() => iniciarBot(), 5000);
-      } else {
-        console.log('❌ Sessão encerrada. Apaga a pasta auth_info e reinicia o serviço.');
-      }
-    } else if (connection === 'open') {
-      console.log('✅ BT JRBN Bot conectado com sucesso!');
-    }
-  });
+  const textoMensagem = msg.body;
+  if (!textoMensagem) return;
 
-  sock.ev.on('messages.upsert', async ({ messages }) => {
-    const msg = messages[0];
+  console.log(`📩 Mensagem de ${msg.from}: ${textoMensagem}`);
 
-    if (!msg.key.fromMe && !msg.key.remoteJid.includes('@g.us')) {
-      const numeroRemetente = msg.key.remoteJid;
-      const textoMensagem = msg.message?.conversation ||
-                            msg.message?.extendedTextMessage?.text || '';
+  const resposta = await perguntarIA(msg.from, textoMensagem);
+  await msg.reply(resposta);
 
-      if (textoMensagem) {
-        console.log(`📩 Mensagem de ${numeroRemetente}: ${textoMensagem}`);
-        const resposta = await perguntarIA(numeroRemetente, textoMensagem);
-        await sock.sendMessage(numeroRemetente, { text: resposta });
-        console.log(`📤 Resposta enviada: ${resposta}`);
-      }
-    }
-  });
-}
+  console.log(`📤 Resposta enviada: ${resposta}`);
+});
 
-iniciarBot();
+client.initialize();
