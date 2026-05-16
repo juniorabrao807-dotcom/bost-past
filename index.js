@@ -7,7 +7,7 @@ const fetch = require('node-fetch');
 // ============================================================
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_KEY;
-const CHROMIUM_PATH = process.env.CHROMIUM_PATH || '/nix/store/chromium/bin/chromium';
+const CHROMIUM_PATH = process.env.CHROMIUM_PATH || '/usr/bin/chromium';
 
 const TABELA_MEGAS = `
 ╔══════════════════════════════════════════╗
@@ -91,13 +91,10 @@ const conversas = {};
 
 async function perguntarIA(numeroTelefone, mensagemCliente) {
   if (!conversas[numeroTelefone]) conversas[numeroTelefone] = [];
-
   conversas[numeroTelefone].push({ role: 'user', content: mensagemCliente });
-
   if (conversas[numeroTelefone].length > 10) {
     conversas[numeroTelefone] = conversas[numeroTelefone].slice(-10);
   }
-
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -113,7 +110,6 @@ async function perguntarIA(numeroTelefone, mensagemCliente) {
         messages: conversas[numeroTelefone]
       })
     });
-
     const data = await response.json();
     const respostaBot = data.content[0].text;
     conversas[numeroTelefone].push({ role: 'assistant', content: respostaBot });
@@ -124,21 +120,13 @@ async function perguntarIA(numeroTelefone, mensagemCliente) {
   }
 }
 
-// Encontrar o caminho do Chromium automaticamente
-const { execSync } = require('child_process');
-let chromiumPath = '';
-try {
-  chromiumPath = execSync('which chromium || which chromium-browser || which google-chrome').toString().trim();
-  console.log('✅ Chromium encontrado em:', chromiumPath);
-} catch (e) {
-  console.log('⚠️ Chromium não encontrado no PATH, usando caminho padrão...');
-  chromiumPath = '/nix/store/chromium/bin/chromium';
-}
+console.log('🚀 A iniciar BT JRBN Bot...');
+console.log('🌐 Caminho do Chromium:', CHROMIUM_PATH);
 
 const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
-    executablePath: chromiumPath,
+    executablePath: CHROMIUM_PATH,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -173,7 +161,6 @@ client.on('message', async (msg) => {
   if (msg.fromMe) return;
   if (msg.from.includes('@g.us')) return;
   if (!msg.body) return;
-
   console.log(`📩 Mensagem de ${msg.from}: ${msg.body}`);
   const resposta = await perguntarIA(msg.from, msg.body);
   await msg.reply(resposta);
